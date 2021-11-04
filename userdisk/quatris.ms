@@ -10,6 +10,11 @@ spr = display(4)
 kBinWidth = 10
 kBinHeight = 17
 
+// Game option: if kSkootch is true, we draw some in-between frames when a piece
+// moves to produce a smoother motion.  If false, they only move in whole grid
+// cell increments.
+kSkootch = true
+
 inBounds = function(column, row)
 	return column >= 0 and column < kBinWidth and
 	  row >= 0 and row < kBinHeight
@@ -117,7 +122,12 @@ Shape.fallOneStep = function()
 		end if
 		return
 	end if
-	self.setPosition self.column, self.row
+	newRow = self.row
+	if kSkootch then
+		self.setPosition self.column, newRow + 0.5
+		yield
+	end if
+	self.setPosition self.column, newRow	
 end function
 
 Shape.hardDrop = function()
@@ -169,7 +179,12 @@ Shape.shift = function(colStep)
 	if self.hitsSomething then
 		self.column = self.column - colStep
 	else
-		self.setPosition self.column, self.row		
+		newCol = self.column
+		if kSkootch then
+			self.setPosition newCol - colStep/2, self.row
+			yield
+		end if		
+		self.setPosition newCol, self.row		
 	end if
 end function
 
@@ -187,6 +202,11 @@ Shape.rotate = function(dir=1)
 		self.rotate -dir
 		return
 	end if
+	if kSkootch then
+		self.tilt -45 * dir
+		yield
+		self.tilt 0
+	end if
 	self.shift 0
 	self.setPosition self.column, self.row
 end function
@@ -198,7 +218,20 @@ Shape.setPosition = function(column, row)
 	y = yForRow(self.row)
 	for i in range(0,3)
 		offset = self.blockPos[i]
-		self.blocks[i].setPosition(column + offset[0], row + offset[1])
+		self.blocks[i].setPosition column + offset[0], row + offset[1]
+	end for
+end function
+
+Shape.tilt = function(degrees)
+	radians = degrees * pi/180
+	for i in range(0,3)
+		offset = self.blockPos[i]
+		b = self.blocks[i]
+		r = sqrt(offset[0]^2 + offset[1]^2) * Block.image.width
+		ang = atan(offset[1], offset[0]) + radians		
+		b.x = xForColumn(self.column) + r * cos(ang)
+		b.y = yForRow(self.row) + r * sin(ang)
+		b.rotation = degrees
 	end for
 end function
 
