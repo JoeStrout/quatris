@@ -1,0 +1,403 @@
+// Tetris!
+import "listUtil"
+import "qa"
+import "mathUtil"
+
+clear
+display(4).mode = displayMode.sprite
+spr = display(4)
+
+kBinWidth = 10
+kBinHeight = 17
+
+inBounds = function(column, row)
+	return column >= 0 and column < kBinWidth and
+	  row >= 0 and row < kBinHeight
+end function
+
+xForColumn = function(column)
+	return 100 + column * Block.image.width
+end function
+
+yForRow = function(row)
+	return 40 + row * Block.image.height
+end function
+
+Block = new Sprite
+Block.image = file.loadImage("pics/block.png")
+Block.row = -1
+Block.column = -1
+Block.targetXY = null
+Block.targetTint = null
+Block.update = function(dt=0)
+	if self.targetXY then
+		mathUtil.moveTowardsXY(self, self.targetXY, 8)
+		if self.x == self.targetXY.x and self.y == self.targetXY.y then
+			self.targetXY = null
+		end if
+	end if
+	if self.targetTint then
+		self.tint = color.lerp(self.tint, self.targetTint, 0.1)
+	end if
+end function
+Block.setPosition = function(column, row)	
+	self.column = column
+	self.row = row
+	self.x = xForColumn(self.column)
+	self.y = yForRow(self.row)	
+	self.targetXY = null
+end function
+Block.setTarget = function(column, row)
+	self.column = column
+	self.row = row
+	self.targetXY = {"x":xForColumn(self.column), "y":yForRow(self.row)	}
+end function
+
+softDropKey = false  // true when down-arrow key was pressed
+hardDropKey = false
+
+softDropKeyDown = function()
+	return key.pressed("down") and not softDropKey
+end function
+
+hardDropKeyDown = function()
+	return (key.pressed("up") or key.pressed("space")) and not hardDropKey
+end function
+
+bin = list.init2d(kBinWidth, kBinHeight)
+updateBin = function()
+	for col in bin.indexes
+		for row in bin[col].indexes
+			b = bin[col][row]
+			if b then b.update
+		end for
+	end for
+end function
+
+timePerFallStep = 0.4
+
+Shape = {}
+Shape.row = 0
+Shape.column = 0
+Shape.blocks = null  // list of four Blocks in this shape
+Shape.blockPos = null  // list of [dcol, drow] block positions
+Shape.tint = color.white
+Shape.fallDelay = 0   // how much time until we fall 1 step
+Shape.done = false   // block has hit the bottom, or "landed"
+
+Shape.update = function(dt)
+	if hardDropKeyDown then
+		self.hardDrop
+		return
+	end if
+	self.fallDelay = self.fallDelay - dt
+	if self.fallDelay > 0 and not softDropKeyDown then return
+	self.fallOneStep
+	delayTime = timePerFallStep
+	if (softDropKey or softDropKeyDown) and self.softDropOK then
+		delayTime = delayTime / 10
+	end if
+	self.fallDelay = self.fallDelay + delayTime
+	if not softDropKey then self.softDropOK = true
+end function
+
+Shape.fallOneStep = function()
+	// try moving down one row
+	self.row = self.row - 1
+	// check if we hit bottom (or an existing block)
+	if self.hitsSomething then
+		self.row = self.row + 1
+		self.done = true
+		if self.fitsInBin then
+			self.storeInBin
+		else
+			// Game over!  (This shape does not fit on the board)
+			globals.gameOver = true
+			return
+		end if
+		return
+	end if
+	self.setPosition self.column, self.row
+end function
+
+Shape.hardDrop = function()
+	// move down until we hit something
+	f = 0
+	while not self.done
+		self.fallOneStep
+		f = not f
+		if f then yield
+	end while
+end function
+
+Shape.hitsSomething = function()
+	for pos in self.blockPos
+		c = self.column + pos[0]
+		r = self.row + pos[1]
+		// check for hitting bottom
+		if r < 0 then return true  // hit bottom
+		// check for hitting existing blocks
+		if inBounds(c,r) and bin[c][r] then return true
+	end for
+end function
+
+Shape.fitsInBin = function()
+	for i in self.blocks.indexes
+		b = self.blocks[i]
+		if b.row >= kBinHeight then return false
+	end for
+	return true
+end function
+
+Shape.storeInBin = function()
+	for i in self.blocks.indexes
+		b = self.blocks[i]
+		bin[b.column][b.row] = b
+	end for
+	validate
+end function
+
+Shape.shift = function(colStep)
+	for pos in self.blockPos
+		newCol = self.column + colStep + pos[0]
+		if newCol < 0 then colStep = colStep - newCol
+		if newCol >= kBinWidth then
+			colStep = colStep - (newCol - kBinWidth + 1)
+		end if
+	end for
+	self.column = self.column + colStep
+	if self.hitsSomething then
+		self.column = self.column - colStep
+	else
+		self.setPosition self.column, self.row		
+	end if
+end function
+
+Shape.rotate = function(dir=1)
+	if not dir then return
+	for i in range(0,3)
+		offset = self.blockPos[i]
+		if dir > 0 then
+			self.blockPos[i] = [-offset[1], offset[0]]
+		else
+			self.blockPos[i] = [offset[1], -offset[0]]
+		end if
+	end for
+	if self.hitsSomething then
+		self.rotate -dir
+		return
+	end if
+	self.shift 0
+	self.setPosition self.column, self.row
+end function
+
+Shape.setPosition = function(column, row)
+	self.column = column
+	self.row = row
+	x = xForColumn(self.column)
+	y = yForRow(self.row)
+	for i in range(0,3)
+		offset = self.blockPos[i]
+		self.blocks[i].setPosition(column + offset[0], row + offset[1])
+	end for
+end function
+
+Shape.init = function()
+	self.blocks = []
+	for i in range(0,3)
+		b = new Block
+		b.tint = self.tint
+		self.blocks.push b
+		spr.sprites.push b
+	end for
+	self.setPosition round(kBinWidth/2), kBinHeight
+	self.softDropOK = not softDropKey
+	return self
+end function
+
+ShapeLine = new Shape
+ShapeLine.blockPos = [[0,-1], [0,0], [0,1], [0,2]]
+ShapeLine.tint = color.aqua
+
+ShapeT = new Shape
+ShapeT.blockPos = [[-1,0], [0,0], [1,0], [0,-1]]
+ShapeT.tint = color.fuchsia
+
+Shape5 = new Shape
+Shape5.blockPos = [[0,0], [1,0], [1,1], [0,-1]]
+Shape5.tint = color.lime
+
+ShapeS = new Shape
+ShapeS.blockPos = [[1,0], [0,0], [0,1], [1,-1]]
+ShapeS.tint = color.orange
+
+ShapeSquare = new Shape
+ShapeSquare.blockPos = [[0,0], [0,1], [1,0], [1,1]]
+ShapeSquare.tint = color.pink
+
+ShapeL = new Shape
+ShapeL.blockPos = [[0,0], [0,1], [0,-1], [1,-1]]
+ShapeL.tint = color.white
+
+ShapeInvL = new Shape
+ShapeInvL.blockPos = [[0,0], [0,1], [0,-1], [-1,-1]]
+ShapeInvL.tint = color.yellow
+
+allShapes = [ShapeLine, ShapeT, Shape5, ShapeS, ShapeSquare,
+ShapeL, ShapeInvL]
+
+isCompleteLine = function(row)
+	for col in range(0, kBinWidth-1)
+		if not bin[col][row] then return false
+	end for
+	return true
+end function
+
+validate = function()
+	for col in range(0, kBinWidth-1)
+		for row in range(0, kBinHeight-1)
+			b = bin[col][row]
+			if not b then continue
+			qa.assert b.column == col and b.row == row
+			qa.assert spr.sprites.indexOf(b) != null
+			// qa.assert b.x == xForColumn(col)
+			// qa.assert b.y == yForRow(row)
+		end for
+	end for
+end function
+
+vanishingBlocks = []
+updateVanishingBlocks = function()
+	for i in range(vanishingBlocks.len-1)
+		b = vanishingBlocks[i]
+		t = time - b.startTime
+		if t < 0 then continue
+		if t < 0.3 then
+			b.tint = color.lerp(b.startTint, color.white, t*3)
+		else
+			b.tint = color.lerp(color.white, b.startTint[:7]+"00", (t-0.3)*3)
+			if t > 0.6 then
+				spr.sprites.removeVal b
+				vanishingBlocks.remove i
+			end if
+		end if
+	end for
+	return vanishingBlocks.len > 0
+end function
+
+clearLine = function(row)
+	validate
+	for col in range(0, kBinWidth-1)
+		b = bin[col][row]
+		if b then
+			vanishingBlocks.push b
+			b.startTint = b.tint
+			b.startTime = time + 0.1 * abs(col - kBinWidth/2)
+		end if
+		bin[col].remove row
+		bin[col].push null
+		for r in range(row, kBinHeight-1)
+			b = bin[col][r]
+			if b then b.setTarget b.column, r
+		end for
+	end for
+	validate
+end function
+
+clearCompleteLines = function()
+	clearCount = 0
+	for row in range(kBinHeight-1, 0)
+		if isCompleteLine(row) then
+			clearLine row
+			clearCount = clearCount + 1
+		end if
+	end for
+	if not clearCount then return
+	while updateVanishingBlocks; end while
+	pointValues = [0, 40, 100, 300, 1200]
+	addToScore pointValues[clearCount]
+	for i in range(4 * clearCount)
+		updateBin
+		yield
+	end for
+end function
+
+// Draw the bin
+// left side
+gfx.line xForColumn(0)-24, yForRow(0)-24,
+xForColumn(0)-24, yForRow(kBinHeight-1), color.silver, 16
+// right side
+gfx.line xForColumn(kBinWidth-1)+24, yForRow(0)-24,
+xForColumn(kBinWidth-1)+24, yForRow(kBinHeight-1), color.silver, 16
+// bottom
+gfx.line xForColumn(0)-16, yForRow(0)-24,
+xForColumn(kBinWidth-1)+16, yForRow(0)-24, color.silver, 16
+
+drawScore = function()
+	s = ("00000" + score)[-6:]
+	text.row = 25; text.column = 60
+	print s
+end function
+
+addToScore = function(points)
+	globals.score = score + points
+	drawScore
+end function
+
+currentShape = new ShapeLine
+currentShape.init
+
+// Main Loop
+prevTime = time
+prevHorInp = 0
+prevRotInp = 0
+gameOver = false
+score = 0
+drawScore
+shapesBag = []
+while not gameOver
+	now = time
+	dt = now - prevTime
+	prevTime = now
+	key.clear
+	
+	// check inputs
+	horInp = round(key.axis("Horizontal"))
+	if horInp != prevHorInp then
+		if horInp < 0 then  // move left
+			currentShape.shift -1
+		else if horInp > 0 then  // move right
+			currentShape.shift 1
+		end if
+		prevHorInp = horInp
+	end if
+	rotInp = key.pressed("left shift") - key.pressed("left alt")
+	if rotInp != prevRotInp then
+		currentShape.rotate rotInp
+		prevRotInp = rotInp
+	end if
+	// update the shape
+	currentShape.update dt
+	if currentShape.done then
+		clearCompleteLines
+		if not shapesBag then
+			shapesBag = allShapes[:]
+			shapesBag.shuffle
+		end if
+		nextShapeClass = shapesBag.pop
+		currentShape = new nextShapeClass
+		currentShape.init
+		prevTime = time
+	end if
+	// update keys
+	softDropKey = key.pressed("down")	
+	hardDropKey = key.pressed("up") or key.pressed("space")	
+	yield
+end while
+
+text.row = 12; text.column = 30
+print "GAME OVER"
+wait
+key.clear
+text.row = 1
+
