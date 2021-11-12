@@ -248,29 +248,35 @@ Shape.init = function()
 	return self
 end function
 
+Shape.remove = function()
+	for i in range(0,3)
+		spr.sprites.removeVal self.blocks[i]
+	end for
+end function
+
 ShapeLine = new Shape
 ShapeLine.blockPos = [[0,-1], [0,0], [0,1], [0,2]]
-ShapeLine.tint = color.aqua
+ShapeLine.tint = color.red
 
 ShapeT = new Shape
 ShapeT.blockPos = [[-1,0], [0,0], [1,0], [0,-1]]
-ShapeT.tint = color.fuchsia
+ShapeT.tint = color.lime
 
 Shape5 = new Shape
 Shape5.blockPos = [[0,0], [1,0], [1,1], [0,-1]]
-Shape5.tint = color.lime
+Shape5.tint = color.orange
 
 ShapeS = new Shape
 ShapeS.blockPos = [[1,0], [0,0], [0,1], [1,-1]]
-ShapeS.tint = color.orange
+ShapeS.tint = "#CCCCFF"
 
 ShapeSquare = new Shape
 ShapeSquare.blockPos = [[0,0], [0,1], [1,0], [1,1]]
-ShapeSquare.tint = color.pink
+ShapeSquare.tint = color.blue
 
 ShapeL = new Shape
 ShapeL.blockPos = [[0,0], [0,1], [0,-1], [1,-1]]
-ShapeL.tint = color.white
+ShapeL.tint = "#FFBBDD"
 
 ShapeInvL = new Shape
 ShapeInvL.blockPos = [[0,0], [0,1], [0,-1], [-1,-1]]
@@ -379,12 +385,12 @@ end function
 
 nextShapeOnScreen = null
 drawNextShape = function(shape)
-	spr.sprites.removeVal nextShapeOnScreen
-	globals.nextShapeOnScreen = shape
-	shape.x = xForColumn(15)
-	shape.y = yForRow(8)
-	spr.sprites.push shape
+	if nextShapeOnScreen then nextShapeOnScreen.remove
+	globals.nextShapeOnScreen = shape	
+	shape.init
+	shape.setPosition 15, 8
 end function
+gfx.print "NEXT", xForColumn(15)-18, yForRow(8)+80, color.silver, "small"
 
 pickNextShape = function()
 	nextShapeClass = shapesBag.pop
