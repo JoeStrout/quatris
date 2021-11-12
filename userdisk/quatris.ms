@@ -377,8 +377,25 @@ addToScore = function(points)
 	drawScore
 end function
 
-currentShape = new ShapeLine
-currentShape.init
+nextShapeOnScreen = null
+drawNextShape = function(shape)
+	spr.sprites.removeVal nextShapeOnScreen
+	globals.nextShapeOnScreen = shape
+	shape.x = xForColumn(15)
+	shape.y = yForRow(8)
+	spr.sprites.push shape
+end function
+
+pickNextShape = function()
+	nextShapeClass = shapesBag.pop
+	globals.currentShape = new nextShapeClass
+	currentShape.init
+	if not shapesBag then
+		globals.shapesBag = allShapes[:]
+		shapesBag.shuffle
+	end if
+	drawNextShape shapesBag[-1]
+end function
 
 // Main Loop
 prevTime = time
@@ -387,7 +404,9 @@ prevRotInp = 0
 gameOver = false
 score = 0
 drawScore
-shapesBag = []
+shapesBag = allShapes[:]; shapesBag.shuffle
+pickNextShape
+
 while not gameOver
 	now = time
 	dt = now - prevTime
@@ -413,13 +432,7 @@ while not gameOver
 	currentShape.update dt
 	if currentShape.done then
 		clearCompleteLines
-		if not shapesBag then
-			shapesBag = allShapes[:]
-			shapesBag.shuffle
-		end if
-		nextShapeClass = shapesBag.pop
-		currentShape = new nextShapeClass
-		currentShape.init
+		pickNextShape
 		prevTime = time
 	end if
 	// update keys
