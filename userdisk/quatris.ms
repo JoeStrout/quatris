@@ -28,8 +28,23 @@ yForRow = function(row)
 	return 40 + row * Block.image.height
 end function
 
+blockAtlas = file.loadImage("pics/blocks.png")
+
 Block = new Sprite
-Block.image = file.loadImage("pics/block.png")
+Block.images = []
+for i in range(0,15)
+	Block.images.push blockAtlas.getImage(
+	 (i%4) * 32, (3-floor(i/4)) * 32, 32, 32)
+end for
+Block.connN = false  // (connected to neighboring block
+Block.connE = false  //  in any direction that's true)
+Block.connS = false
+Block.connW = false
+Block.selectImage = function()
+	self.image = Block.images[
+	  self.connN + self.connE*2 + self.connS*4 + self.connW*8]
+end function
+Block.image = Block.images[0]
 Block.row = -1
 Block.column = -1
 Block.targetXY = null
@@ -208,7 +223,28 @@ Shape.rotate = function(dir=1)
 		self.tilt 0
 	end if
 	self.shift 0
+	self.fixConnections
 	self.setPosition self.column, self.row
+end function
+
+Shape.hasBlockAtPos = function(dcol, drow)
+	for pos in self.blockPos
+		if pos[0] == dcol and pos[1] == drow then return true
+	end for
+	return false
+end function
+
+// Set connN, connE, etc. for each of our blocks.
+Shape.fixConnections = function()
+	for i in range(0,3)
+		p = self.blockPos[i]
+		b = self.blocks[i]
+		b.connN = self.hasBlockAtPos(p[0], p[1]+1)
+		b.connS = self.hasBlockAtPos(p[0], p[1]-1)
+		b.connE = self.hasBlockAtPos(p[0]+1, p[1])
+		b.connW = self.hasBlockAtPos(p[0]-1, p[1])
+		b.selectImage
+	end for
 end function
 
 Shape.setPosition = function(column, row)
@@ -245,6 +281,7 @@ Shape.init = function()
 	end for
 	self.setPosition round(kBinWidth/2), kBinHeight
 	self.softDropOK = not softDropKey
+	self.fixConnections
 	return self
 end function
 
@@ -326,19 +363,35 @@ end function
 
 clearLine = function(row)
 	validate
+	// iterate over all columns in the game...
 	for col in range(0, kBinWidth-1)
 		b = bin[col][row]
-		if b then
-			vanishingBlocks.push b
-			b.startTint = b.tint
-			b.startTime = time + 0.1 * abs(col - kBinWidth/2)
-		end if
+		if not b then continue
+		// start this block vanishing
+		vanishingBlocks.push b
+		b.startTint = b.tint
+		b.startTime = time + 0.1 * abs(col - kBinWidth/2)
+		// remove it from the bin data structure
 		bin[col].remove row
 		bin[col].push null
+		// make sure all the blocks above move to their new location
 		for r in range(row, kBinHeight-1)
 			b = bin[col][r]
 			if b then b.setTarget b.column, r
 		end for
+		// disconnect any blocks above or below from the deleted block
+		if row < kBinHeight-1 then
+			b = bin[col][row]
+			if b then
+				b.connS = false; b.selectImage
+			end if
+		end if
+		if row > 0 then
+			b = bin[col][row-1]
+			if b then
+				b.connN = false; b.selectImage				
+			end if
+		end if
 	end for
 	validate
 end function
