@@ -94,7 +94,9 @@ updateBin = function()
 	end for
 end function
 
-timePerFallStep = 0.4
+timePerFallStep = function()
+	return 5 / (5 + level)
+end function
 
 Shape = {}
 Shape.row = 0
@@ -407,7 +409,7 @@ clearCompleteLines = function()
 	if not clearCount then return
 	while updateVanishingBlocks; end while
 	pointValues = [0, 40, 100, 300, 1200]
-	addToScore pointValues[clearCount]
+	addToScore pointValues[clearCount], clearCount
 	for i in range(4 * clearCount)
 		updateBin
 		yield
@@ -427,12 +429,18 @@ xForColumn(kBinWidth-1)+16, yForRow(0)-24, color.silver, 16
 
 drawScore = function()
 	s = ("00000" + score)[-6:]
-	text.row = 25; text.column = 60
-	print s
+	text.row = 25; text.column = 54
+	print "SCORE: " + s
+	text.column = 54
+	print "LINES: " + lines
+	text.column = 54
+	print "LEVEL: " + level
 end function
 
-addToScore = function(points)
+addToScore = function(points, lines)
 	globals.score = score + points
+	globals.lines = globals.lines + lines
+	globals.level = ceil(lines/10)
 	drawScore
 end function
 
@@ -462,6 +470,8 @@ prevHorInp = 0
 prevRotInp = 0
 gameOver = false
 score = 0
+lines = 0
+level = 1
 drawScore
 shapesBag = allShapes[:]; shapesBag.shuffle
 pickNextShape
